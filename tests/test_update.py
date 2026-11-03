@@ -1,5 +1,6 @@
 import io
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -19,6 +20,10 @@ class UpdateTests(unittest.TestCase):
         self.digest = "sha256:" + "c" * 64
         self.release = {"tag_name": "v0.33.0", "draft": False, "prerelease": False}
         self.commit = {"sha": "a" * 40}
+        self.image = patch(
+            "scripts.update.image_digest", return_value="sha256:" + "e" * 64
+        ).start()
+        self.addCleanup(patch.stopall)
 
     def responses(self):
         return [
@@ -26,14 +31,19 @@ class UpdateTests(unittest.TestCase):
             for data in (self.release, self.commit)
         ]
 
-    def test_records_exact_release_commit_and_base_without_losing_ffmpeg_pin(self):
+    def test_records_exact_release_image_and_removes_independent_ffmpeg_pin(self):
         with patch("urllib.request.urlopen", side_effect=self.responses()):
             metadata = update(self.path, self.digest)
         self.assertEqual(metadata, json.loads(self.path.read_text()))
         self.assertEqual(metadata["version"], "v0.33.0")
         self.assertEqual(metadata["revision"], "a" * 40)
         self.assertEqual(metadata["base_digest"], self.digest)
-        self.assertEqual(metadata["ffmpeg_revision"], "b" * 40)
+        self.assertEqual(
+            metadata["upstream_image"],
+            "ghcr.io/dispatcharr/dispatcharr:0.33.0@sha256:" + "e" * 64,
+        )
+        self.image.assert_called_once_with("ghcr.io/dispatcharr/dispatcharr:0.33.0")
+        self.assertNotIn("ffmpeg_revision", metadata)
 
     def test_unchanged_release_produces_identical_file(self):
         with patch("urllib.request.urlopen", side_effect=self.responses()):
@@ -89,8 +99,8 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(metadata["base_digest"], self.digest)
         self.assertEqual(metadata["version"], "v0.33.0")
 
-    def test_invalid_ffmpeg_pin_preserves_previous_metadata(self):
-        self.path.write_text(json.dumps({"ffmpeg_revision": "main"}))
+    def test_invalid_image_digest_preserves_previous_metadata(self):
+        self.image.return_value = "latest"
         before = self.path.read_bytes()
         with (
             patch("urllib.request.urlopen", side_effect=self.responses()),
@@ -105,6 +115,16 @@ class UpdateTests(unittest.TestCase):
         with (
             patch("urllib.request.urlopen", side_effect=error),
             self.assertRaises(HTTPError),
+        ):
+            update(self.path, self.digest)
+        self.assertEqual(before, self.path.read_bytes())
+
+    def test_unavailable_release_image_preserves_previous_metadata(self):
+        before = self.path.read_bytes()
+        self.image.side_effect = subprocess.CalledProcessError(1, ["docker", "buildx"])
+        with (
+            patch("urllib.request.urlopen", side_effect=self.responses()),
+            self.assertRaises(subprocess.CalledProcessError),
         ):
             update(self.path, self.digest)
         self.assertEqual(before, self.path.read_bytes())

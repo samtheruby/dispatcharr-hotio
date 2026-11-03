@@ -25,7 +25,9 @@ jobs:
       - name: Check release tracking and shell syntax
         run: |
           python3 -m unittest discover -s tests -v
-          bash -n tests/test-image.sh
+          for script in tests/*.sh scripts/*.sh; do
+            bash -n "$script"
+          done
 
       - uses: docker/setup-buildx-action@v4
 
@@ -57,23 +59,18 @@ jobs:
           echo "version=$(jq -r .version meta.json)" >> "$GITHUB_OUTPUT"
           echo "revision=$(jq -r .revision meta.json)" >> "$GITHUB_OUTPUT"
           echo "base_digest=$(jq -r .base_digest meta.json)" >> "$GITHUB_OUTPUT"
-          echo "ffmpeg_revision=$(jq -r .ffmpeg_revision meta.json)" >> "$GITHUB_OUTPUT"
+          echo "upstream_image=$(jq -r .upstream_image meta.json)" >> "$GITHUB_OUTPUT"
           if docker manifest inspect "$marker" >/dev/null 2>&1; then
             echo 'build=false' >> "$GITHUB_OUTPUT"
           else
             echo 'build=true' >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Fetch exact Dispatcharr release source
+      - name: Verify incompatible OS blocks packaging
         if: steps.update.outputs.build == 'true'
-        uses: actions/checkout@v7
-        with:
-          repository: Dispatcharr/Dispatcharr
-          ref: ${{ steps.update.outputs.revision }}
-          path: source
-          persist-credentials: false
+        run: bash tests/test-compatibility.sh
 
-      - name: Build release image with Noble FFmpeg
+      - name: Package upstream release on Hotio
         if: steps.update.outputs.build == 'true'
         uses: docker/bake-action@v7
         env:
@@ -81,7 +78,7 @@ jobs:
           VERSION: ${{ steps.update.outputs.version }}
           REVISION: ${{ steps.update.outputs.revision }}
           BASE_DIGEST: ${{ steps.update.outputs.base_digest }}
-          FFMPEG_REVISION: ${{ steps.update.outputs.ffmpeg_revision }}
+          UPSTREAM_IMAGE: ${{ steps.update.outputs.upstream_image }}
         with:
           source: .
           targets: app
@@ -90,9 +87,11 @@ jobs:
             *.cache-from=type=registry,ref=${{ steps.update.outputs.image }}:buildcache
             app.cache-to=type=registry,ref=${{ steps.update.outputs.image }}:buildcache,mode=max
 
-      - name: Test fresh startup, HTTP, GPU groups, and shutdown
+      - name: Compare upstream artifacts and test container lifecycle
         if: steps.update.outputs.build == 'true'
-        run: bash tests/test-image.sh dispatcharr-hotio:test
+        env:
+          UPSTREAM_IMAGE: ${{ steps.update.outputs.upstream_image }}
+        run: bash tests/test-image.sh dispatcharr-hotio:test "$UPSTREAM_IMAGE"
 
       - name: Publish tested image
         if: steps.update.outputs.build == 'true'

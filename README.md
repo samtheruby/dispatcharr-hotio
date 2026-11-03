@@ -26,17 +26,33 @@ Pass GPU devices through Docker when needed; verify acceleration on your hardwar
 ## Updates
 
 GitHub Actions checks the latest stable Dispatcharr release and Hotio base every
-hour, at minute 17. It commits changes to [meta.json](meta.json), fetches the
-exact Dispatcharr commit, builds the image, and runs [the container test](tests/test-image.sh).
+hour, at minute 17. It commits the release image digest and source revision to
+[meta.json](meta.json), packages that published runtime on Hotio, and runs
+[the container test](tests/test-image.sh).
 Only passing images receive `latest` and the Dispatcharr version tag, such as
 `v0.33.0`. Version tags can receive base updates; use an image digest to pin a build.
 The `build-...` tags record completed builds. `buildcache` stores build layers.
 Failed builds or publishing retry on the next hourly check.
 
-FFmpeg stays pinned to the tested source revision in `meta.json` and is rebuilt
-against Ubuntu 24.04 for compatibility with Hotio. Review that pin when Dispatcharr
-changes its media requirements. Application code comes from Dispatcharr's release,
-not a maintained fork. Packaging changes also trigger builds.
+The application, built frontend, FFmpeg, ffprobe, Comskip, and installed Python
+packages come directly from the official release image. They are not rebuilt or
+independently upgraded. Tests compare the application files, media binary hashes,
+and Python package versions with that image before publishing.
+Image-level NVIDIA settings must also match upstream so driver libraries are
+requested before container startup.
+
+System packages use the official image's installed package list and repositories.
+Available OS package patches can be newer than the donor image; this is a Hotio
+distribution, not an identical copy of Dispatcharr's complete operating system.
+Hotio supplies startup, VPN support, its service account, and `/config` handling.
+Upstream's application environment defaults are applied after Hotio initializes;
+explicit environment settings take precedence.
+
+The build checks that upstream and Hotio use the same OS release and architecture.
+An incompatible release stops publishing and needs a reviewed packaging change.
+There is no automatic fallback to different FFmpeg or Python packages. Dependency
+layers cache separately from the application, so application-only releases reuse
+the existing dependency layers. Packaging changes also trigger builds.
 
 Builds do not upgrade running containers. Pull and recreate your container when
 you are ready. Keep existing volume mappings when switching from the local image.
@@ -55,18 +71,17 @@ package settings to allow pulls without logging in.
 
 ## Local build
 
-Requires Docker with Buildx, Git, Python 3, and jq. Run from this repository:
+Requires Docker with Buildx, Python 3, and jq. Run from this repository:
 
 ```bash
 python3 -m unittest discover -s tests -v
-git clone https://github.com/Dispatcharr/Dispatcharr.git source
-git -C source checkout "$(jq -r .revision meta.json)"
 export BASE_DIGEST="$(jq -r .base_digest meta.json)"
-export FFMPEG_REVISION="$(jq -r .ffmpeg_revision meta.json)"
+export UPSTREAM_IMAGE="$(jq -r .upstream_image meta.json)"
 export REVISION="$(jq -r .revision meta.json)"
 export VERSION="$(jq -r .version meta.json)"
 docker buildx bake app --load
-bash tests/test-image.sh
+bash tests/test-compatibility.sh
+bash tests/test-image.sh dispatcharr-hotio:test "$UPSTREAM_IMAGE"
 ```
 
 The container test uses fresh temporary data with VPN disabled. It checks imports,
@@ -75,5 +90,6 @@ tunnel failure blocking, real GPU acceleration, and existing database upgrades
 need separate checks.
 
 Packaging code uses BSD-3-Clause; Dispatcharr and bundled components retain their
-own licenses. The image includes Dispatcharr's source and license in `/app` and
-FFmpeg build information in `/usr/local/share/doc/dispatcharr-ffmpeg`.
+own licenses. The image retains Dispatcharr's application files in `/app` and
+upstream's installed notices under `/usr/local/share`. The package inventory and
+application defaults used during packaging are in `/usr/local/share/dispatcharr-upstream`.

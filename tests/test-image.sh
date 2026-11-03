@@ -2,6 +2,28 @@
 set -euo pipefail
 
 image=${1:-dispatcharr-hotio:test}
+upstream=${2:-}
+
+if [[ -n "$upstream" ]]; then
+    for executable in ffmpeg ffprobe comskip; do
+        test "$(docker run --rm --entrypoint sha256sum "$image" "/usr/local/bin/$executable")" \
+            = "$(docker run --rm --entrypoint sha256sum "$upstream" "/usr/local/bin/$executable")"
+    done
+    packages='import importlib.metadata as m, json; print(json.dumps(sorted((d.metadata["Name"], d.version) for d in m.distributions())))'
+    test "$(docker run --rm --entrypoint /dispatcharrpy/bin/python "$image" -c "$packages")" \
+        = "$(docker run --rm --entrypoint /dispatcharrpy/bin/python "$upstream" -c "$packages")"
+    manifest='cd /app; find . -type f -print0 | sort -z | xargs -0 sha256sum'
+    docker run --rm --entrypoint bash "$upstream" -ec "$manifest" \
+        | docker run --rm -i --entrypoint bash "$image" -ec 'cd /app; sha256sum --check --quiet'
+    image_environment='{{range .Config.Env}}{{println .}}{{end}}'
+    test "$(docker image inspect --format "$image_environment" "$image" | awk '/^NVIDIA_/' | sort)" \
+        = "$(docker image inspect --format "$image_environment" "$upstream" | awk '/^NVIDIA_/' | sort)"
+    echo 'PASS: application, media binaries, and Python packages match upstream'
+fi
+
+docker run --rm -e UV_PROJECT_ENVIRONMENT=/custom \
+    --entrypoint /usr/local/bin/dispatcharr-env "$image" python -c \
+    'import os; assert os.environ["UV_PROJECT_ENVIRONMENT"] == "/custom"'
 
 # Reproduce Hotio assigning the GPU's GID before Dispatcharr configures users.
 docker run --rm --entrypoint bash "$image" -ec '
@@ -29,7 +51,9 @@ docker run --rm --entrypoint bash "$image" -ec '
     command -v comskip
     nginx -v
     redis-server --version
-    test -x /usr/lib/postgresql/17/bin/postgres
+    postgres=(/usr/lib/postgresql/*/bin/postgres)
+    test "${#postgres[@]}" = 1
+    test -x "${postgres[0]}"
 '
 
 container=$(docker run -d --tmpfs /data --tmpfs /config \
