@@ -26,13 +26,13 @@ Pass GPU devices through Docker when needed; verify acceleration on your hardwar
 ## Updates
 
 GitHub Actions checks the latest stable Dispatcharr release and Hotio base every
-hour, at minute 17. It commits the release image digest and source revision to
+12 hours, at 00:17 and 12:17 UTC. It commits the release image digest and source revision to
 [meta.json](meta.json), packages that published runtime on Hotio, and runs
 [the container test](tests/test-image.sh).
 Only passing images receive `latest` and the Dispatcharr version tag, such as
 `v0.33.0`. Version tags can receive base updates; use an image digest to pin a build.
 The `build-...` tags record completed builds. `buildcache` stores build layers.
-Failed builds or publishing retry on the next hourly check.
+Failed builds or publishing retry on the next scheduled check.
 
 The application, built frontend, FFmpeg, ffprobe, Comskip, and installed Python
 packages come directly from the official release image. They are not rebuilt or
