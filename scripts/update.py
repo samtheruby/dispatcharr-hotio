@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import subprocess
 import sys
 import urllib.request
 from pathlib import Path
@@ -23,6 +24,22 @@ def github(path: str) -> dict[str, Any]:
         return json.load(response)
 
 
+def image_digest(image: str) -> str:
+    return subprocess.check_output(
+        [
+            "docker",
+            "buildx",
+            "imagetools",
+            "inspect",
+            image,
+            "--format",
+            "{{.Manifest.Digest}}",
+        ],
+        text=True,
+        timeout=60,
+    ).strip()
+
+
 def update(path: Path, base_digest: str) -> dict[str, Any]:
     if not re.fullmatch(r"sha256:[0-9a-f]{64}", base_digest):
         raise ValueError("Hotio base must resolve to a SHA-256 digest")
@@ -38,9 +55,17 @@ def update(path: Path, base_digest: str) -> dict[str, Any]:
     revision = github(f"commits/{version}")["sha"]
     if not re.fullmatch(r"[0-9a-f]{40}", revision):
         raise ValueError("Dispatcharr release must resolve to a commit SHA")
-    if not re.fullmatch(r"[0-9a-f]{40}", metadata["ffmpeg_revision"]):
-        raise ValueError("FFmpeg must be pinned to a commit SHA")
-    metadata.update(version=version, revision=revision, base_digest=base_digest)
+    image = f"ghcr.io/dispatcharr/dispatcharr:{version[1:]}"
+    digest = image_digest(image)
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+        raise ValueError("Dispatcharr release image must resolve to a SHA-256 digest")
+    metadata.pop("ffmpeg_revision", None)
+    metadata.update(
+        version=version,
+        revision=revision,
+        base_digest=base_digest,
+        upstream_image=f"{image}@{digest}",
+    )
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
     temporary.replace(path)
@@ -50,5 +75,11 @@ def update(path: Path, base_digest: str) -> dict[str, Any]:
 if __name__ == "__main__":
     try:
         update(Path("meta.json"), sys.argv[1])
-    except (OSError, ValueError, KeyError, IndexError) as error:
+    except (
+        OSError,
+        ValueError,
+        KeyError,
+        IndexError,
+        subprocess.SubprocessError,
+    ) as error:
         sys.exit(f"Update failed: {error}")
