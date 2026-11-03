@@ -60,7 +60,7 @@ jobs:
           echo "revision=$(jq -r .revision meta.json)" >> "$GITHUB_OUTPUT"
           echo "base_digest=$(jq -r .base_digest meta.json)" >> "$GITHUB_OUTPUT"
           echo "upstream_image=$(jq -r .upstream_image meta.json)" >> "$GITHUB_OUTPUT"
-          if docker manifest inspect "$marker" >/dev/null 2>&1; then
+          if docker buildx imagetools inspect "$marker" >/dev/null 2>&1; then
             echo 'build=false' >> "$GITHUB_OUTPUT"
           else
             echo 'build=true' >> "$GITHUB_OUTPUT"
