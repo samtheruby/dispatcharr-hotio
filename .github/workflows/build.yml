@@ -2,7 +2,7 @@ name: Update and build Dispatcharr Hotio
 
 on:
   schedule:
-    - cron: '17 * * * *'
+    - cron: '17 */12 * * *'
   workflow_dispatch:
   push:
     branches: [main]
@@ -104,7 +104,7 @@ jobs:
           docker push "$IMAGE:$VERSION"
           docker tag dispatcharr-hotio:test "$IMAGE:latest"
           docker push "$IMAGE:latest"
-          # Publish the completion marker last so failed publishing retries next hour.
+          # Publish the completion marker last so failed publishing retries next scheduled check.
           docker tag dispatcharr-hotio:test "$MARKER"
           docker push "$MARKER"
           echo "Published $IMAGE:$VERSION and $IMAGE:latest" >> "$GITHUB_STEP_SUMMARY"
