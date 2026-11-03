@@ -1,0 +1,6 @@
+{
+  "base_digest": "sha256:a76c01e39b7cb201c5a604376cba2b6e0827dd8fbb7fb7a3b413b19d41fb7be3",
+  "ffmpeg_revision": "fce79836385ee64bc3c91360fb9cfb40818b80c7",
+  "revision": "2fa13a6707bdf0dae87e0c494bcd3ca282cdeb3e",
+  "version": "v0.33.0"
+}

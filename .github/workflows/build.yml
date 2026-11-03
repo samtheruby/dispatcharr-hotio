@@ -1,0 +1,111 @@
+name: Update and build Dispatcharr Hotio
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: dispatcharr-hotio-publish
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check release tracking and shell syntax
+        run: |
+          python3 -m unittest discover -s tests -v
+          bash -n tests/test-image.sh
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Track latest stable release and Hotio base
+        id: update
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          digest=$(docker buildx imagetools inspect ghcr.io/hotio/base:noblevpn --format '{{.Manifest.Digest}}')
+          python3 scripts/update.py "$digest"
+          if ! git diff --quiet -- meta.json; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add meta.json
+            git commit -m "chore(deps): track Dispatcharr $(jq -r .version meta.json) and Hotio base"
+            git push
+          fi
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          fingerprint=$(git ls-files -z | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-16)
+          marker="${image}:build-${fingerprint}"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "marker=$marker" >> "$GITHUB_OUTPUT"
+          echo "version=$(jq -r .version meta.json)" >> "$GITHUB_OUTPUT"
+          echo "revision=$(jq -r .revision meta.json)" >> "$GITHUB_OUTPUT"
+          echo "base_digest=$(jq -r .base_digest meta.json)" >> "$GITHUB_OUTPUT"
+          echo "ffmpeg_revision=$(jq -r .ffmpeg_revision meta.json)" >> "$GITHUB_OUTPUT"
+          if docker manifest inspect "$marker" >/dev/null 2>&1; then
+            echo 'build=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'build=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fetch exact Dispatcharr release source
+        if: steps.update.outputs.build == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: Dispatcharr/Dispatcharr
+          ref: ${{ steps.update.outputs.revision }}
+          path: source
+          persist-credentials: false
+
+      - name: Build release image with Noble FFmpeg
+        if: steps.update.outputs.build == 'true'
+        uses: docker/bake-action@v7
+        env:
+          IMAGE: dispatcharr-hotio:test
+          VERSION: ${{ steps.update.outputs.version }}
+          REVISION: ${{ steps.update.outputs.revision }}
+          BASE_DIGEST: ${{ steps.update.outputs.base_digest }}
+          FFMPEG_REVISION: ${{ steps.update.outputs.ffmpeg_revision }}
+        with:
+          source: .
+          targets: app
+          load: true
+          set: |
+            *.cache-from=type=registry,ref=${{ steps.update.outputs.image }}:buildcache
+            app.cache-to=type=registry,ref=${{ steps.update.outputs.image }}:buildcache,mode=max
+
+      - name: Test fresh startup, HTTP, GPU groups, and shutdown
+        if: steps.update.outputs.build == 'true'
+        run: bash tests/test-image.sh dispatcharr-hotio:test
+
+      - name: Publish tested image
+        if: steps.update.outputs.build == 'true'
+        env:
+          IMAGE: ${{ steps.update.outputs.image }}
+          VERSION: ${{ steps.update.outputs.version }}
+          MARKER: ${{ steps.update.outputs.marker }}
+        run: |
+          docker tag dispatcharr-hotio:test "$IMAGE:$VERSION"
+          docker push "$IMAGE:$VERSION"
+          docker tag dispatcharr-hotio:test "$IMAGE:latest"
+          docker push "$IMAGE:latest"
+          # Publish the completion marker last so failed publishing retries next hour.
+          docker tag dispatcharr-hotio:test "$MARKER"
+          docker push "$MARKER"
+          echo "Published $IMAGE:$VERSION and $IMAGE:latest" >> "$GITHUB_STEP_SUMMARY"
