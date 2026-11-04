@@ -1,5 +1,5 @@
 {
-  "base_digest": "sha256:a76c01e39b7cb201c5a604376cba2b6e0827dd8fbb7fb7a3b413b19d41fb7be3",
+  "base_digest": "sha256:74881e398f41a1cae0e0683ff24742d897a8930622e4bee33b6f664812de2e85",
   "revision": "2fa13a6707bdf0dae87e0c494bcd3ca282cdeb3e",
   "upstream_image": "ghcr.io/dispatcharr/dispatcharr:0.33.0@sha256:96bc548978c68e684677da7895692eeeefb7f0b2edfa38311dac2b702c61d236",
   "version": "v0.33.0"
