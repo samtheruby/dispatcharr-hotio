@@ -1,6 +1,6 @@
 {
   "base_digest": "sha256:3a6301831af4da8ad4e6414eeb5004e2bfb9361b0a4f6aa0d3ab3ab2f9e40b3b",
-  "revision": "2fa13a6707bdf0dae87e0c494bcd3ca282cdeb3e",
-  "upstream_image": "ghcr.io/dispatcharr/dispatcharr:0.33.0@sha256:96bc548978c68e684677da7895692eeeefb7f0b2edfa38311dac2b702c61d236",
-  "version": "v0.33.0"
+  "revision": "3e322c537f26207bf219aa5b4beaa69d3f5f19a4",
+  "upstream_image": "ghcr.io/dispatcharr/dispatcharr:0.34.0@sha256:bcf8dda41864e52b00f30136d882d8b61299a1ca6612d61124850186b2320f60",
+  "version": "v0.34.0"
 }
