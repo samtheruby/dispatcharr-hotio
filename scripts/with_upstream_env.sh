@@ -7,7 +7,7 @@ while IFS= read -r -d '' setting; do
     if [[ ! -v "$name" ]]; then
         export "${setting?}"
     fi
-done < /usr/local/share/dispatcharr-upstream/environment
+done </usr/local/share/dispatcharr-upstream/environment
 
 export PATH="/dispatcharrpy/bin:$PATH"
 exec "$@"

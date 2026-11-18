@@ -59,12 +59,30 @@ def update(path: Path, base_digest: str) -> dict[str, Any]:
     digest = image_digest(image)
     if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
         raise ValueError("Dispatcharr release image must resolve to a SHA-256 digest")
-    metadata.pop("ffmpeg_revision", None)
+    upstream_image = f"{image}@{digest}"
+    ffmpeg_revision = subprocess.check_output(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--platform",
+            "linux/amd64",
+            "--entrypoint",
+            "cat",
+            upstream_image,
+            "/usr/local/share/doc/dispatcharr-ffmpeg/SOURCE_REVISION",
+        ],
+        text=True,
+        timeout=600,
+    ).strip()
+    if not re.fullmatch(r"[0-9a-f]{40}", ffmpeg_revision):
+        raise ValueError("Release image must record its FFmpeg source commit SHA")
     metadata.update(
         version=version,
         revision=revision,
         base_digest=base_digest,
-        upstream_image=f"{image}@{digest}",
+        upstream_image=upstream_image,
+        ffmpeg_revision=ffmpeg_revision,
     )
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")

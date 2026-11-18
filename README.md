@@ -26,33 +26,41 @@ Pass GPU devices through Docker when needed; verify acceleration on your hardwar
 ## Updates
 
 GitHub Actions checks the latest stable Dispatcharr release and Hotio base every
-12 hours, at 00:17 and 12:17 UTC. It commits the release image digest and source revision to
-[meta.json](meta.json), packages that published runtime on Hotio, and runs
+12 hours, at 00:17 and 12:17 UTC. It commits the release image digest, source revision,
+and the release's FFmpeg source revision to [meta.json](meta.json). It builds the
+runtime on Hotio's Ubuntu 24.04 base, copies the released application, and runs
 [the container test](tests/test-image.sh).
 Only passing images receive `latest` and the Dispatcharr version tag, such as
-`v0.33.0`. Version tags can receive base updates; use an image digest to pin a build.
+`v0.34.1`. Version tags can receive base updates; use an image digest to pin a build.
 The `build-...` tags record completed builds. `buildcache` stores build layers.
 Failed builds or publishing retry on the next scheduled check.
 
-The application, built frontend, FFmpeg, ffprobe, Comskip, and installed Python
-packages come directly from the official release image. They are not rebuilt or
-independently upgraded. Tests compare the application files, media binary hashes,
-and Python package versions with that image before publishing.
+The application and built frontend come directly from the official release image.
+FFmpeg, ffprobe, the Intel media stack, Comskip, Python dependencies, and the
+legacy NumPy wheel are built for Ubuntu 24.04. The build reuses Dispatcharr's
+`docker/DispatcharrBase` recipe at the release revision and the FFmpeg recipe
+recorded in the release image. [The adapter](scripts/prepare_runtime.py) changes
+Ubuntu package names, isolates codec builds from Hotio's configuration directory,
+and rejects unexpected recipe changes for review.
+Python dependencies resolve from the release's `pyproject.toml`, as in upstream's
+base build; unpinned packages can be newer. Comskip follows upstream's source recipe.
+Tests compare application files and FFmpeg source pins with the official image,
+check Python dependencies and native libraries, encode a sample, and test startup
+and shutdown before publishing. Pull requests and manual runs on other branches
+build and test without publishing. Only runs on `main` publish images.
 Image-level NVIDIA settings must also match upstream so driver libraries are
 requested before container startup.
 
-System packages use the official image's installed package list and repositories.
-Available OS package patches can be newer than the donor image; this is a Hotio
-distribution, not an identical copy of Dispatcharr's complete operating system.
+System packages and repositories match Ubuntu 24.04. The build does not copy
+Ubuntu 26.04 native binaries, Python environments, or apt repositories into Hotio.
 Hotio supplies startup, VPN support, its service account, and `/config` handling.
 Upstream's application environment defaults are applied after Hotio initializes;
 explicit environment settings take precedence.
 
-The build checks that upstream and Hotio use the same OS release and architecture.
-An incompatible release stops publishing and needs a reviewed packaging change.
-There is no automatic fallback to different FFmpeg or Python packages. Dependency
-layers cache separately from the application, so application-only releases reuse
-the existing dependency layers. Packaging changes also trigger builds.
+The build rejects bases other than Ubuntu 24.04. Dependency layers cache separately
+from the application, so application-only releases reuse existing build layers.
+The first source build can take several hours; later builds reuse the registry cache.
+Packaging changes also trigger builds.
 
 Builds do not upgrade running containers. Pull and recreate your container when
 you are ready. Keep existing volume mappings when switching from the local image.
@@ -71,7 +79,8 @@ package settings to allow pulls without logging in.
 
 ## Local build
 
-Requires Docker with Buildx, Python 3, and jq. Run from this repository:
+Requires Docker with Buildx, Python 3, Git, jq, and enough disk space for source
+builds. Run from this repository with a fresh `source` directory:
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -79,8 +88,14 @@ export BASE_DIGEST="$(jq -r .base_digest meta.json)"
 export UPSTREAM_IMAGE="$(jq -r .upstream_image meta.json)"
 export REVISION="$(jq -r .revision meta.json)"
 export VERSION="$(jq -r .version meta.json)"
-docker buildx bake app --load
+export FFMPEG_REVISION="$(jq -r .ffmpeg_revision meta.json)"
+git clone https://github.com/Dispatcharr/Dispatcharr.git source/dispatcharr
+git -C source/dispatcharr checkout "$REVISION"
+git clone https://github.com/Dispatcharr/FFmpeg.git source/ffmpeg
+git -C source/ffmpeg checkout "$FFMPEG_REVISION"
+python3 scripts/prepare_runtime.py
 bash tests/test-compatibility.sh
+docker buildx bake app --load
 bash tests/test-image.sh dispatcharr-hotio:test "$UPSTREAM_IMAGE"
 ```
 
@@ -91,5 +106,6 @@ need separate checks.
 
 Packaging code uses BSD-3-Clause; Dispatcharr and bundled components retain their
 own licenses. The image retains Dispatcharr's application files in `/app` and
-upstream's installed notices under `/usr/local/share`. The package inventory and
-application defaults used during packaging are in `/usr/local/share/dispatcharr-upstream`.
+the rebuilt media components' notices under `/usr/local/share`. The official image's
+package inventory (for reference only) and application defaults are retained in
+`/usr/local/share/dispatcharr-upstream`.
