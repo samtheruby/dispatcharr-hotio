@@ -18,13 +18,41 @@ variable "VERSION" {
   default = ""
 }
 
+variable "FFMPEG_REVISION" {
+  default = ""
+}
+
+target "ffmpeg" {
+  context = "source/ffmpeg"
+  dockerfile = "Dockerfile.hotio"
+  args = {
+    UBUNTU_BASE = "ghcr.io/hotio/base:noblevpn@${BASE_DIGEST}"
+    SOURCE_REVISION = FFMPEG_REVISION
+  }
+  platforms = ["linux/amd64"]
+}
+
+target "runtime" {
+  context = "source/dispatcharr"
+  dockerfile = "docker/DispatcharrBase.hotio"
+  args = {
+    FFMPEG_IMAGE = "ffmpeg-base"
+  }
+  contexts = {
+    ffmpeg-base = "target:ffmpeg"
+  }
+  platforms = ["linux/amd64"]
+}
+
 target "app" {
   context = "."
   dockerfile = "Dockerfile"
   args = {
-    HOTIO_BASE_IMAGE = "ghcr.io/hotio/base:noblevpn@${BASE_DIGEST}"
     UPSTREAM_IMAGE = UPSTREAM_IMAGE
     DISPATCHARR_VERSION = VERSION
+  }
+  contexts = {
+    runtime-base = "target:runtime"
   }
   labels = {
     "org.opencontainers.image.source" = "https://github.com/samtheruby/dispatcharr-hotio"

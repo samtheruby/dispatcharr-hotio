@@ -23,6 +23,9 @@ class UpdateTests(unittest.TestCase):
         self.image = patch(
             "scripts.update.image_digest", return_value="sha256:" + "e" * 64
         ).start()
+        self.ffmpeg_source = patch(
+            "subprocess.check_output", return_value="f" * 40 + "\n"
+        ).start()
         self.addCleanup(patch.stopall)
 
     def responses(self):
@@ -31,7 +34,7 @@ class UpdateTests(unittest.TestCase):
             for data in (self.release, self.commit)
         ]
 
-    def test_records_exact_release_image_and_removes_independent_ffmpeg_pin(self):
+    def test_records_release_image_and_its_ffmpeg_source_revision(self):
         with patch("urllib.request.urlopen", side_effect=self.responses()):
             metadata = update(self.path, self.digest)
         self.assertEqual(metadata, json.loads(self.path.read_text()))
@@ -43,7 +46,27 @@ class UpdateTests(unittest.TestCase):
             "ghcr.io/dispatcharr/dispatcharr:0.33.0@sha256:" + "e" * 64,
         )
         self.image.assert_called_once_with("ghcr.io/dispatcharr/dispatcharr:0.33.0")
-        self.assertNotIn("ffmpeg_revision", metadata)
+        self.assertEqual(metadata["ffmpeg_revision"], "f" * 40)
+
+    def test_unknown_ffmpeg_source_preserves_previous_metadata(self):
+        self.ffmpeg_source.return_value = "unknown\n"
+        before = self.path.read_bytes()
+        with (
+            patch("urllib.request.urlopen", side_effect=self.responses()),
+            self.assertRaises(ValueError),
+        ):
+            update(self.path, self.digest)
+        self.assertEqual(before, self.path.read_bytes())
+
+    def test_missing_ffmpeg_source_preserves_previous_metadata(self):
+        self.ffmpeg_source.side_effect = subprocess.CalledProcessError(1, ["docker"])
+        before = self.path.read_bytes()
+        with (
+            patch("urllib.request.urlopen", side_effect=self.responses()),
+            self.assertRaises(subprocess.CalledProcessError),
+        ):
+            update(self.path, self.digest)
+        self.assertEqual(before, self.path.read_bytes())
 
     def test_unchanged_release_produces_identical_file(self):
         with patch("urllib.request.urlopen", side_effect=self.responses()):

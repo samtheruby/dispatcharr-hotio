@@ -1,6 +1,7 @@
 {
   "base_digest": "sha256:3a6301831af4da8ad4e6414eeb5004e2bfb9361b0a4f6aa0d3ab3ab2f9e40b3b",
-  "revision": "3e322c537f26207bf219aa5b4beaa69d3f5f19a4",
-  "upstream_image": "ghcr.io/dispatcharr/dispatcharr:0.34.0@sha256:bcf8dda41864e52b00f30136d882d8b61299a1ca6612d61124850186b2320f60",
-  "version": "v0.34.0"
+  "ffmpeg_revision": "017fb15aab106384b5115a4582b05790c83a74a9",
+  "revision": "7448c4ad4e39256c3a810db12fc674ee52147617",
+  "upstream_image": "ghcr.io/dispatcharr/dispatcharr:0.34.1@sha256:3716ebb0aba133fe8b3d311505dc49966b7fddff742d9ab710ccd19d04658195",
+  "version": "v0.34.1"
 }
