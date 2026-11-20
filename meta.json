@@ -1,5 +1,5 @@
 {
-  "base_digest": "sha256:7a65efbb6af77c142e319d3d52f2d044e7f909832400bef7ebcfba2b09161d25",
+  "base_digest": "sha256:40a291eac430320a3d15204076f2cf06b8f9132de41cd2773990aeca1e9cde09",
   "ffmpeg_revision": "017fb15aab106384b5115a4582b05790c83a74a9",
   "revision": "7448c4ad4e39256c3a810db12fc674ee52147617",
   "upstream_image": "ghcr.io/dispatcharr/dispatcharr:0.34.1@sha256:3716ebb0aba133fe8b3d311505dc49966b7fddff742d9ab710ccd19d04658195",
